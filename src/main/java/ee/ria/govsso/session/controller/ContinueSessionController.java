@@ -38,12 +38,12 @@ import static ee.ria.govsso.session.logging.StatisticsLogger.LOGIN_REQUEST_INFO;
 @Controller
 @RequiredArgsConstructor
 public class ContinueSessionController {
-    public static final String AUTH_VIEW_REQUEST_MAPPING = "/login/continuesession";
+    public static final String CONTINUE_SESSION_REQUEST_MAPPING = "/login/continuesession";
 
     private final HydraService hydraService;
     private final StatisticsLogger statisticsLogger;
 
-    @PostMapping(value = AUTH_VIEW_REQUEST_MAPPING, produces = MediaType.TEXT_HTML_VALUE)
+    @PostMapping(value = CONTINUE_SESSION_REQUEST_MAPPING, produces = MediaType.TEXT_HTML_VALUE)
     public RedirectView continueSession(
             @ModelAttribute("loginChallenge")
             @Pattern(regexp = "^[a-f0-9]{32}$", message = "Incorrect login_challenge format") String loginChallenge,

@@ -14,9 +14,11 @@ import ee.ria.govsso.session.configuration.properties.SecurityConfigurationPrope
 import ee.ria.govsso.session.error.ErrorCode;
 import ee.ria.govsso.session.error.exceptions.SsoException;
 import lombok.NonNull;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.http.ResponseCookie;
 import org.springframework.stereotype.Component;
 
+import javax.servlet.http.Cookie;
 import java.text.ParseException;
 import java.util.AbstractMap.SimpleImmutableEntry;
 import java.util.Map;
@@ -26,9 +28,10 @@ import java.util.stream.Stream;
 
 import static ee.ria.govsso.session.session.SsoCookie.COOKIE_NAME_GOVSSO;
 import static ee.ria.govsso.session.session.SsoCookie.COOKIE_VALUE_LOGIN_CHALLENGE;
+import static ee.ria.govsso.session.session.SsoCookie.COOKIE_VALUE_SESSION_ID;
 import static ee.ria.govsso.session.session.SsoCookie.COOKIE_VALUE_TARA_NONCE;
 import static ee.ria.govsso.session.session.SsoCookie.COOKIE_VALUE_TARA_STATE;
-import static org.springframework.boot.web.server.Cookie.SameSite.LAX;
+import static org.springframework.boot.web.server.Cookie.SameSite.NONE;
 
 @Component
 public class SsoCookieSigner {
@@ -48,22 +51,46 @@ public class SsoCookieSigner {
         }
     }
 
-    public SsoCookie parseAndVerifyCookie(@NonNull String ssoCookieValue) {
+    public SsoCookie getVerifiedSsoCookieOrNull(Cookie ssoCookieValue) {
+        return ssoCookieValue != null ? verifyCookie(ssoCookieValue.getValue(), false) : null;
+    }
+
+    public SsoCookie getVerifiedSsoCookieOrNull(String ssoCookieValue) {
+        return ssoCookieValue != null ? verifyCookie(ssoCookieValue, false) : null;
+    }
+
+    public SsoCookie getVerifiedSsoCookie(String ssoCookieValue) {
+        return verifyCookie(ssoCookieValue, true);
+    }
+
+    private SsoCookie verifyCookie(@NonNull String ssoCookieValue, boolean throwInvalidSignatureException) {
         try {
             JWSObject jwsObject = JWSObject.parse(ssoCookieValue);
             String signingSecret = securityProperties.getCookieSigningSecret();
             JWSVerifier verifier = new MACVerifier(signingSecret.getBytes(StandardCharset.UTF_8));
             if (!jwsObject.verify(verifier)) {
-                throw new SsoException(ErrorCode.USER_INPUT, "Invalid SsoCookie signature");
+                if (throwInvalidSignatureException) {
+                    throw new SsoException(ErrorCode.USER_INPUT, "Invalid SsoCookie signature");
+                } else {
+                    return null;
+                }
             }
 
             Payload payload = jwsObject.getPayload();
             Map<String, Object> ssoObjectMap = payload.toJSONObject();
+            String sessionId = (String) ssoObjectMap.get(COOKIE_VALUE_SESSION_ID);
             String loginChallenge = (String) ssoObjectMap.get(COOKIE_VALUE_LOGIN_CHALLENGE);
             String taraState = (String) ssoObjectMap.get(COOKIE_VALUE_TARA_STATE);
             String taraNonce = (String) ssoObjectMap.get(COOKIE_VALUE_TARA_NONCE);
 
-            return new SsoCookie(loginChallenge, taraState, taraNonce);
+            if (StringUtils.isBlank(sessionId)) {
+                throw new SsoException(ErrorCode.USER_INPUT, "Invalid SsoCookie session id");
+            }
+            if (StringUtils.isBlank(loginChallenge)) {
+                throw new SsoException(ErrorCode.USER_INPUT, "Invalid SsoCookie challenge id");
+            }
+
+            return new SsoCookie(sessionId, loginChallenge, taraState, taraNonce);
         } catch (ParseException ex) {
             throw new SsoException(ErrorCode.USER_INPUT, "Unable to parse SsoCookie", ex);
         } catch (IllegalStateException | JOSEException ex) {
@@ -73,6 +100,7 @@ public class SsoCookieSigner {
 
     public String getSignedCookieValue(SsoCookie ssoCookie) {
         Map<String, Object> cookieValues = Stream.of(
+                        new SimpleImmutableEntry<>(COOKIE_VALUE_SESSION_ID, ssoCookie.getSessionId()),
                         new SimpleImmutableEntry<>(COOKIE_VALUE_LOGIN_CHALLENGE, ssoCookie.getLoginChallenge()),
                         new SimpleImmutableEntry<>(COOKIE_VALUE_TARA_STATE, ssoCookie.getTaraAuthenticationRequestState()),
                         new SimpleImmutableEntry<>(COOKIE_VALUE_TARA_NONCE, ssoCookie.getTaraAuthenticationRequestNonce()))
@@ -84,7 +112,7 @@ public class SsoCookieSigner {
 
         return ResponseCookie
                 .from(COOKIE_NAME_GOVSSO, jwsObject.serialize())
-                .sameSite(LAX.attributeValue())
+                .sameSite(NONE.attributeValue()) // TODO: Update session filters Lax cookies!
                 .maxAge(securityProperties.getCookieMaxAgeSeconds())
                 .path("/")
                 .httpOnly(true)

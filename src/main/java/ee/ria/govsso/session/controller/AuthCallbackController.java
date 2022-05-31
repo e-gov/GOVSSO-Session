@@ -12,7 +12,6 @@ import ee.ria.govsso.session.service.hydra.LoginRejectResponse;
 import ee.ria.govsso.session.service.hydra.LoginRequestInfo;
 import ee.ria.govsso.session.service.tara.TaraService;
 import ee.ria.govsso.session.session.SsoCookie;
-import ee.ria.govsso.session.session.SsoCookieValue;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
@@ -27,6 +26,7 @@ import org.thymeleaf.util.ArrayUtils;
 import javax.servlet.http.HttpServletRequest;
 import javax.validation.constraints.Pattern;
 
+import static ee.ria.govsso.session.filter.RequestCorrelationFilter.REQUEST_ATTRIBUTE_VERIFIED_SSO_COOKIE;
 import static ee.ria.govsso.session.logging.StatisticsLogger.AUTHENTICATION_REQUEST_TYPE;
 import static ee.ria.govsso.session.logging.StatisticsLogger.AuthenticationRequestType.START_SESSION;
 import static ee.ria.govsso.session.logging.StatisticsLogger.LOGIN_REQUEST_INFO;
@@ -47,9 +47,9 @@ public class AuthCallbackController {
             @RequestParam(name = "code", required = false) @Pattern(regexp = "^[A-Za-z0-9\\-_.]{6,87}$") String code,
             @RequestParam(name = "state") @Pattern(regexp = "^[A-Za-z0-9\\-_]{43}$") String state,
             @RequestParam(name = "error", required = false) @Pattern(regexp = "user_cancel", message = "the only supported value is: 'user_cancel'") String error,
-            @SsoCookieValue SsoCookie ssoCookie,
             HttpServletRequest request) {
 
+        SsoCookie ssoCookie = (SsoCookie) request.getAttribute(REQUEST_ATTRIBUTE_VERIFIED_SSO_COOKIE);
         validateSsoCookie(state, ssoCookie);
         request.setAttribute(AUTHENTICATION_REQUEST_TYPE, START_SESSION);
 

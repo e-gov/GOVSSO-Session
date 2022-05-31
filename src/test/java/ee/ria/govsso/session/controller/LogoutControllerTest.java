@@ -6,6 +6,7 @@ import ee.ria.govsso.session.session.SsoCookieSigner;
 import io.restassured.http.ContentType;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.codec.digest.DigestUtils;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -40,30 +41,27 @@ class LogoutControllerTest extends BaseTest {
 
     @Test
     void logoutInit_WhenValidSingleClientLogoutRequest_ReturnsRedirect() {
-        SsoCookie ssoCookie = createSsoCookie();
-
         HYDRA_MOCK_SERVER.stubFor(get(urlEqualTo("/oauth2/auth/requests/logout?logout_challenge=" + TEST_LOGOUT_CHALLENGE))
                 .willReturn(aResponse()
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json; charset=UTF-8")
                         .withBodyFile("mock_responses/mock_sso_oidc_logout_request.json")));
-
         HYDRA_MOCK_SERVER.stubFor(get(urlEqualTo("/oauth2/auth/sessions/consent?subject=Isikukood3"))
                 .willReturn(aResponse()
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json; charset=UTF-8")
                         .withBodyFile("mock_responses/mock_sso_oidc_consents_single_consent.json")));
-
         HYDRA_MOCK_SERVER.stubFor(put(urlEqualTo("/oauth2/auth/requests/logout/accept?logout_challenge=" + TEST_LOGOUT_CHALLENGE))
                 .willReturn(aResponse()
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json; charset=UTF-8")
                         .withBodyFile("mock_responses/mock_sso_oidc_logout_accept.json")));
+        String ssoCookie = createSignedSsoCookie();
 
         given()
                 .param("logout_challenge", TEST_LOGOUT_CHALLENGE)
                 .when()
-                .cookie(ssoCookieSigner.getSignedCookieValue(ssoCookie))
+                .cookie(ssoCookie)
                 .get(LOGOUT_INIT_REQUEST_MAPPING)
                 .then()
                 .assertThat()
@@ -73,27 +71,26 @@ class LogoutControllerTest extends BaseTest {
 
     @Test
     void logoutInit_WhenClientLogoutRequestButSingleConsentIsNotForRequestClient_ReturnsLogoutView() {
-
         HYDRA_MOCK_SERVER.stubFor(get(urlEqualTo("/oauth2/auth/requests/logout?logout_challenge=" + TEST_LOGOUT_CHALLENGE))
                 .willReturn(aResponse()
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json; charset=UTF-8")
                         .withBodyFile("mock_responses/mock_sso_oidc_logout_request_client_b.json")));
-
         HYDRA_MOCK_SERVER.stubFor(get(urlEqualTo("/oauth2/auth/sessions/consent?subject=Isikukood3"))
                 .willReturn(aResponse()
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json; charset=UTF-8")
                         .withBodyFile("mock_responses/mock_sso_oidc_consents_single_consent.json")));
-
         HYDRA_MOCK_SERVER.stubFor(delete(urlEqualTo("/oauth2/auth/sessions/consent?client=client-b&subject=Isikukood3&login_session_id=97f38419-c541-40e9-8d55-ad223ea1f46a&all=false&trigger_backchannel_logout=true"))
                 .willReturn(aResponse()
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json; charset=UTF-8")
                         .withBodyFile("mock_responses/mock_sso_oidc_logout_accept.json")));
+        String ssoCookie = createSignedSsoCookie();
 
         given()
                 .param("logout_challenge", TEST_LOGOUT_CHALLENGE)
+                .cookie(ssoCookie)
                 .when()
                 .get(LOGOUT_INIT_REQUEST_MAPPING)
                 .then()
@@ -106,31 +103,27 @@ class LogoutControllerTest extends BaseTest {
 
     @Test
     void logoutInit_WhenValidMultipleClientLogoutRequest_ReturnsLogoutView() {
-        SsoCookie ssoCookie = createSsoCookie();
-
         HYDRA_MOCK_SERVER.stubFor(get(urlEqualTo("/oauth2/auth/requests/logout?logout_challenge=" + TEST_LOGOUT_CHALLENGE))
                 .willReturn(aResponse()
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json; charset=UTF-8")
                         .withBodyFile("mock_responses/mock_sso_oidc_logout_request.json")));
-
         HYDRA_MOCK_SERVER.stubFor(get(urlEqualTo("/oauth2/auth/sessions/consent?subject=Isikukood3"))
                 .willReturn(aResponse()
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json; charset=UTF-8")
                         .withBodyFile("mock_responses/mock_sso_oidc_consents_multiple_consents.json")));
-
         HYDRA_MOCK_SERVER.stubFor(delete(urlEqualTo("/oauth2/auth/sessions/consent?client=client-a&subject=Isikukood3&login_session_id=97f38419-c541-40e9-8d55-ad223ea1f46a&all=false&trigger_backchannel_logout=true"))
                 .willReturn(aResponse()
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json; charset=UTF-8")
                         .withBodyFile("mock_responses/mock_sso_oidc_logout_accept.json")));
-
+        String ssoCookie = createSignedSsoCookie();
 
         given()
                 .param("logout_challenge", TEST_LOGOUT_CHALLENGE)
                 .when()
-                .cookie(ssoCookieSigner.getSignedCookieValue(ssoCookie))
+                .cookie(ssoCookie)
                 .get(LOGOUT_INIT_REQUEST_MAPPING)
                 .then()
                 .assertThat()
@@ -142,31 +135,27 @@ class LogoutControllerTest extends BaseTest {
 
     @Test
     void logoutInit_WhenValidMultipleClientLogoutRequestWithoutLogo_ReturnsLogoutView() {
-        SsoCookie ssoCookie = createSsoCookie();
-
         HYDRA_MOCK_SERVER.stubFor(get(urlEqualTo("/oauth2/auth/requests/logout?logout_challenge=" + TEST_LOGOUT_CHALLENGE))
                 .willReturn(aResponse()
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json; charset=UTF-8")
                         .withBodyFile("mock_responses/mock_sso_oidc_logout_request_without_logo.json")));
-
         HYDRA_MOCK_SERVER.stubFor(get(urlEqualTo("/oauth2/auth/sessions/consent?subject=Isikukood3"))
                 .willReturn(aResponse()
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json; charset=UTF-8")
                         .withBodyFile("mock_responses/mock_sso_oidc_consents_multiple_consents.json")));
-
         HYDRA_MOCK_SERVER.stubFor(delete(urlEqualTo("/oauth2/auth/sessions/consent?client=client-a&subject=Isikukood3&login_session_id=97f38419-c541-40e9-8d55-ad223ea1f46a&all=false&trigger_backchannel_logout=true"))
                 .willReturn(aResponse()
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json; charset=UTF-8")
                         .withBodyFile("mock_responses/mock_sso_oidc_logout_accept.json")));
-
+        String ssoCookie = createSignedSsoCookie();
 
         given()
                 .param("logout_challenge", TEST_LOGOUT_CHALLENGE)
                 .when()
-                .cookie(ssoCookieSigner.getSignedCookieValue(ssoCookie))
+                .cookie(ssoCookie)
                 .get(LOGOUT_INIT_REQUEST_MAPPING)
                 .then()
                 .assertThat()
@@ -178,30 +167,27 @@ class LogoutControllerTest extends BaseTest {
 
     @Test
     void logoutInit_WhenLocaleFromHydraIsRussian_OpensViewInRussian() {
-        SsoCookie ssoCookie = createSsoCookie();
-
         HYDRA_MOCK_SERVER.stubFor(get(urlEqualTo("/oauth2/auth/requests/logout?logout_challenge=" + TEST_LOGOUT_CHALLENGE))
                 .willReturn(aResponse()
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json; charset=UTF-8")
                         .withBodyFile("mock_responses/mock_sso_oidc_logout_request_with_russian_locale.json")));
-
         HYDRA_MOCK_SERVER.stubFor(get(urlEqualTo("/oauth2/auth/sessions/consent?subject=Isikukood3"))
                 .willReturn(aResponse()
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json; charset=UTF-8")
                         .withBodyFile("mock_responses/mock_sso_oidc_consents_multiple_consents.json")));
-
         HYDRA_MOCK_SERVER.stubFor(delete(urlEqualTo("/oauth2/auth/sessions/consent?client=client-a&subject=Isikukood3&login_session_id=97f38419-c541-40e9-8d55-ad223ea1f46a&all=false&trigger_backchannel_logout=true"))
                 .willReturn(aResponse()
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json; charset=UTF-8")
                         .withBodyFile("mock_responses/mock_sso_oidc_logout_accept.json")));
+        String ssoCookie = createSignedSsoCookie();
 
         given()
                 .param("logout_challenge", TEST_LOGOUT_CHALLENGE)
                 .when()
-                .cookie(ssoCookieSigner.getSignedCookieValue(ssoCookie))
+                .cookie(ssoCookie)
                 .get(LOGOUT_INIT_REQUEST_MAPPING)
                 .then()
                 .assertThat()
@@ -213,23 +199,21 @@ class LogoutControllerTest extends BaseTest {
 
     @Test
     void logoutInit_WhenLocaleFromHydraIsRussian_ErrorMessageIsInRussian() {
-        SsoCookie ssoCookie = createSsoCookie();
-
         HYDRA_MOCK_SERVER.stubFor(get(urlEqualTo("/oauth2/auth/requests/logout?logout_challenge=" + TEST_LOGOUT_CHALLENGE))
                 .willReturn(aResponse()
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json; charset=UTF-8")
                         .withBodyFile("mock_responses/mock_sso_oidc_logout_request_with_russian_locale.json")));
-
         HYDRA_MOCK_SERVER.stubFor(get(urlEqualTo("/oauth2/auth/sessions/consent?subject=Isikukood3"))
                 .willReturn(aResponse()
                         .withStatus(500)));
+        String ssoCookie = createSignedSsoCookie();
 
         given()
                 .param("logout_challenge", TEST_LOGOUT_CHALLENGE)
                 .when()
                 .header(HttpHeaders.ACCEPT, ContentType.HTML)
-                .cookie(ssoCookieSigner.getSignedCookieValue(ssoCookie))
+                .cookie(ssoCookie)
                 .get(LOGOUT_INIT_REQUEST_MAPPING)
                 .then()
                 .assertThat()
@@ -242,60 +226,54 @@ class LogoutControllerTest extends BaseTest {
 
     @Test
     void logoutInit_WhenLocaleFromCookieIsEnglishAndLocaleFromHydraIsRussian_OpensViewInEnglish() {
-        SsoCookie ssoCookie = createSsoCookie();
-
         HYDRA_MOCK_SERVER.stubFor(get(urlEqualTo("/oauth2/auth/requests/logout?logout_challenge=" + TEST_LOGOUT_CHALLENGE))
                 .willReturn(aResponse()
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json; charset=UTF-8")
                         .withBodyFile("mock_responses/mock_sso_oidc_logout_request_with_russian_locale.json")));
-
         HYDRA_MOCK_SERVER.stubFor(get(urlEqualTo("/oauth2/auth/sessions/consent?subject=Isikukood3"))
                 .willReturn(aResponse()
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json; charset=UTF-8")
                         .withBodyFile("mock_responses/mock_sso_oidc_consents_multiple_consents.json")));
-
         HYDRA_MOCK_SERVER.stubFor(delete(urlEqualTo("/oauth2/auth/sessions/consent?client=client-a&subject=Isikukood3&login_session_id=97f38419-c541-40e9-8d55-ad223ea1f46a&all=false&trigger_backchannel_logout=true"))
                 .willReturn(aResponse()
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json; charset=UTF-8")
                         .withBodyFile("mock_responses/mock_sso_oidc_logout_accept.json")));
+        String ssoCookie = createSignedSsoCookie();
 
         given()
                 .param("logout_challenge", TEST_LOGOUT_CHALLENGE)
                 .when()
                 .cookie("__Host-LOCALE", "en")
-                .cookie(ssoCookieSigner.getSignedCookieValue(ssoCookie))
+                .cookie(ssoCookie)
                 .get(LOGOUT_INIT_REQUEST_MAPPING)
                 .then()
                 .assertThat()
                 .statusCode(200)
                 .body(containsString("You have been logged out from Service name A"))
                 .body(matchesRegex("(?:.*\\r*\\n*)*You are still logged in to the following services:(?:.*\\r*\\n*)*Service name B(?:.*\\r*\\n*)*"));
-
     }
 
     @Test
     void logoutInit_WhenLocaleFromCookieIsEnglishAndLocaleFromHydraIsRussian_ErrorMessageIsInEnglish() {
-        SsoCookie ssoCookie = createSsoCookie();
-
         HYDRA_MOCK_SERVER.stubFor(get(urlEqualTo("/oauth2/auth/requests/logout?logout_challenge=" + TEST_LOGOUT_CHALLENGE))
                 .willReturn(aResponse()
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json; charset=UTF-8")
                         .withBodyFile("mock_responses/mock_sso_oidc_logout_request_with_russian_locale.json")));
-
         HYDRA_MOCK_SERVER.stubFor(get(urlEqualTo("/oauth2/auth/sessions/consent?subject=Isikukood3"))
                 .willReturn(aResponse()
                         .withStatus(500)));
+        String ssoCookie = createSignedSsoCookie();
 
         given()
                 .param("logout_challenge", TEST_LOGOUT_CHALLENGE)
                 .when()
                 .header(HttpHeaders.ACCEPT, ContentType.HTML)
                 .cookie("__Host-LOCALE", "en")
-                .cookie(ssoCookieSigner.getSignedCookieValue(ssoCookie))
+                .cookie(ssoCookie)
                 .get(LOGOUT_INIT_REQUEST_MAPPING)
                 .then()
                 .assertThat()
@@ -308,54 +286,48 @@ class LogoutControllerTest extends BaseTest {
 
     @Test
     void logoutInit_WhenLocaleFromParameterIsEnglishAndLocaleFromCookieIsEstonianAndLocaleFromHydraIsRussian_OpensViewInEnglish() {
-        SsoCookie ssoCookie = createSsoCookie();
-
         HYDRA_MOCK_SERVER.stubFor(get(urlEqualTo("/oauth2/auth/requests/logout?logout_challenge=" + TEST_LOGOUT_CHALLENGE))
                 .willReturn(aResponse()
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json; charset=UTF-8")
                         .withBodyFile("mock_responses/mock_sso_oidc_logout_request_with_russian_locale.json")));
-
         HYDRA_MOCK_SERVER.stubFor(get(urlEqualTo("/oauth2/auth/sessions/consent?subject=Isikukood3"))
                 .willReturn(aResponse()
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json; charset=UTF-8")
                         .withBodyFile("mock_responses/mock_sso_oidc_consents_multiple_consents.json")));
-
         HYDRA_MOCK_SERVER.stubFor(delete(urlEqualTo("/oauth2/auth/sessions/consent?client=client-a&subject=Isikukood3&login_session_id=97f38419-c541-40e9-8d55-ad223ea1f46a&all=false&trigger_backchannel_logout=true"))
                 .willReturn(aResponse()
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json; charset=UTF-8")
                         .withBodyFile("mock_responses/mock_sso_oidc_logout_accept.json")));
+        String ssoCookie = createSignedSsoCookie();
 
         given()
                 .param("logout_challenge", TEST_LOGOUT_CHALLENGE)
                 .param("lang", "en")
                 .when()
                 .cookie("__Host-LOCALE", "et")
-                .cookie(ssoCookieSigner.getSignedCookieValue(ssoCookie))
+                .cookie(ssoCookie)
                 .get(LOGOUT_INIT_REQUEST_MAPPING)
                 .then()
                 .assertThat()
                 .statusCode(200)
                 .body(containsString("You have been logged out from Service name A"))
                 .body(matchesRegex("(?:.*\\r*\\n*)*You are still logged in to the following services:(?:.*\\r*\\n*)*Service name B(?:.*\\r*\\n*)*"));
-
     }
 
     @Test
     void logoutInit_WhenLocaleFromParameterIsEnglishAndLocaleFromCookieIsEstonianAndLocaleFromHydraIsRussian_ErrorMessageIsInEnglish() {
-        SsoCookie ssoCookie = createSsoCookie();
-
         HYDRA_MOCK_SERVER.stubFor(get(urlEqualTo("/oauth2/auth/requests/logout?logout_challenge=" + TEST_LOGOUT_CHALLENGE))
                 .willReturn(aResponse()
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json; charset=UTF-8")
                         .withBodyFile("mock_responses/mock_sso_oidc_logout_request_with_russian_locale.json")));
-
         HYDRA_MOCK_SERVER.stubFor(get(urlEqualTo("/oauth2/auth/sessions/consent?subject=Isikukood3"))
                 .willReturn(aResponse()
                         .withStatus(500)));
+        String ssoCookie = createSignedSsoCookie();
 
         given()
                 .param("logout_challenge", TEST_LOGOUT_CHALLENGE)
@@ -363,7 +335,7 @@ class LogoutControllerTest extends BaseTest {
                 .when()
                 .header(HttpHeaders.ACCEPT, ContentType.HTML)
                 .cookie("__Host-LOCALE", "et")
-                .cookie(ssoCookieSigner.getSignedCookieValue(ssoCookie))
+                .cookie(ssoCookie)
                 .get(LOGOUT_INIT_REQUEST_MAPPING)
                 .then()
                 .assertThat()
@@ -376,32 +348,29 @@ class LogoutControllerTest extends BaseTest {
 
     @Test
     void logoutInit_WhenLocaleFromParameterIsUnknownAndLocaleFromCookieIsUnknownAndLocaleFromHydraIsUnknown_OpensViewInEstonian() {
-        SsoCookie ssoCookie = createSsoCookie();
-
         HYDRA_MOCK_SERVER.stubFor(get(urlEqualTo("/oauth2/auth/requests/logout?logout_challenge=" + TEST_LOGOUT_CHALLENGE))
                 .willReturn(aResponse()
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json; charset=UTF-8")
                         .withBodyFile("mock_responses/mock_sso_oidc_logout_request_with_unknown_locale.json")));
-
         HYDRA_MOCK_SERVER.stubFor(get(urlEqualTo("/oauth2/auth/sessions/consent?subject=Isikukood3"))
                 .willReturn(aResponse()
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json; charset=UTF-8")
                         .withBodyFile("mock_responses/mock_sso_oidc_consents_multiple_consents.json")));
-
         HYDRA_MOCK_SERVER.stubFor(delete(urlEqualTo("/oauth2/auth/sessions/consent?client=client-a&subject=Isikukood3&login_session_id=97f38419-c541-40e9-8d55-ad223ea1f46a&all=false&trigger_backchannel_logout=true"))
                 .willReturn(aResponse()
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json; charset=UTF-8")
                         .withBodyFile("mock_responses/mock_sso_oidc_logout_accept.json")));
+        String ssoCookie = createSignedSsoCookie();
 
         given()
                 .param("logout_challenge", TEST_LOGOUT_CHALLENGE)
                 .param("lang", "unknown")
                 .when()
                 .cookie("__Host-LOCALE", "unknown")
-                .cookie(ssoCookieSigner.getSignedCookieValue(ssoCookie))
+                .cookie(ssoCookie)
                 .get(LOGOUT_INIT_REQUEST_MAPPING)
                 .then()
                 .assertThat()
@@ -412,17 +381,15 @@ class LogoutControllerTest extends BaseTest {
 
     @Test
     void logoutInit_WhenLocaleFromParameterIsUnknownAndLocaleFromCookieIsUnknownAndLocaleFromHydraIsUnknown_ErrorMessageIsInEstonian() {
-        SsoCookie ssoCookie = createSsoCookie();
-
         HYDRA_MOCK_SERVER.stubFor(get(urlEqualTo("/oauth2/auth/requests/logout?logout_challenge=" + TEST_LOGOUT_CHALLENGE))
                 .willReturn(aResponse()
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json; charset=UTF-8")
                         .withBodyFile("mock_responses/mock_sso_oidc_logout_request_with_unknown_locale.json")));
-
         HYDRA_MOCK_SERVER.stubFor(get(urlEqualTo("/oauth2/auth/sessions/consent?subject=Isikukood3"))
                 .willReturn(aResponse()
                         .withStatus(500)));
+        String ssoCookie = createSignedSsoCookie();
 
         given()
                 .param("logout_challenge", TEST_LOGOUT_CHALLENGE)
@@ -430,7 +397,7 @@ class LogoutControllerTest extends BaseTest {
                 .when()
                 .header(HttpHeaders.ACCEPT, ContentType.HTML)
                 .cookie("__Host-LOCALE", "unknown")
-                .cookie(ssoCookieSigner.getSignedCookieValue(ssoCookie))
+                .cookie(ssoCookie)
                 .get(LOGOUT_INIT_REQUEST_MAPPING)
                 .then()
                 .assertThat()
@@ -443,37 +410,33 @@ class LogoutControllerTest extends BaseTest {
 
     @Test
     void logoutInit_WhenMultipleLocalesFromHydra_OpensViewInRussian() {
-        SsoCookie ssoCookie = createSsoCookie();
-
         HYDRA_MOCK_SERVER.stubFor(get(urlEqualTo("/oauth2/auth/requests/logout?logout_challenge=" + TEST_LOGOUT_CHALLENGE))
                 .willReturn(aResponse()
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json; charset=UTF-8")
                         .withBodyFile("mock_responses/mock_sso_oidc_logout_request_with_multiple_locales.json")));
-
         HYDRA_MOCK_SERVER.stubFor(get(urlEqualTo("/oauth2/auth/sessions/consent?subject=Isikukood3"))
                 .willReturn(aResponse()
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json; charset=UTF-8")
                         .withBodyFile("mock_responses/mock_sso_oidc_consents_multiple_consents.json")));
-
         HYDRA_MOCK_SERVER.stubFor(delete(urlEqualTo("/oauth2/auth/sessions/consent?client=client-a&subject=Isikukood3&login_session_id=97f38419-c541-40e9-8d55-ad223ea1f46a&all=false&trigger_backchannel_logout=true"))
                 .willReturn(aResponse()
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json; charset=UTF-8")
                         .withBodyFile("mock_responses/mock_sso_oidc_logout_accept.json")));
+        String ssoCookie = createSignedSsoCookie();
 
         given()
                 .param("logout_challenge", TEST_LOGOUT_CHALLENGE)
                 .when()
-                .cookie(ssoCookieSigner.getSignedCookieValue(ssoCookie))
+                .cookie(ssoCookie)
                 .get(LOGOUT_INIT_REQUEST_MAPPING)
                 .then()
                 .assertThat()
                 .statusCode(200)
                 .body(containsString("Вы вышли из Teenusenimi A"))
                 .body(matchesRegex("(?:.*\\r*\\n*)*У вас все еще есть активные сеансы в следующих приложениях:(?:.*\\r*\\n*)*Teenusenimi B(?:.*\\r*\\n*)*"));
-
     }
 
     @Test
@@ -483,22 +446,21 @@ class LogoutControllerTest extends BaseTest {
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json; charset=UTF-8")
                         .withBodyFile("mock_responses/mock_sso_oidc_logout_request.json")));
-
         HYDRA_MOCK_SERVER.stubFor(get(urlEqualTo("/oauth2/auth/sessions/consent?subject=Isikukood3"))
                 .willReturn(aResponse()
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json; charset=UTF-8")
                         .withBodyFile("mock_responses/mock_sso_oidc_consents_duplicate_unordered_consents.json")));
-
         HYDRA_MOCK_SERVER.stubFor(delete(urlEqualTo("/oauth2/auth/sessions/consent?client=client-a&subject=Isikukood3&login_session_id=97f38419-c541-40e9-8d55-ad223ea1f46a&all=false&trigger_backchannel_logout=true"))
                 .willReturn(aResponse()
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json; charset=UTF-8")
                         .withBodyFile("mock_responses/mock_sso_oidc_logout_accept.json")));
-
+        String ssoCookie = createSignedSsoCookie();
 
         given()
                 .param("logout_challenge", TEST_LOGOUT_CHALLENGE)
+                .cookie(ssoCookie)
                 .when()
                 .get(LOGOUT_INIT_REQUEST_MAPPING)
                 .then()
@@ -511,18 +473,17 @@ class LogoutControllerTest extends BaseTest {
 
     @Test
     void logoutInit_WhenNotRelyingPartyInitiatedLogoutRequest_ThrowsUserInputError() {
-        SsoCookie ssoCookie = createSsoCookie();
-
         HYDRA_MOCK_SERVER.stubFor(get(urlEqualTo("/oauth2/auth/requests/logout?logout_challenge=" + TEST_LOGOUT_CHALLENGE))
                 .willReturn(aResponse()
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json; charset=UTF-8")
                         .withBodyFile("mock_responses/mock_sso_oidc_logout_request_rp_initiated_false.json")));
+        String ssoCookie = createSignedSsoCookie();
 
         given()
                 .param("logout_challenge", TEST_LOGOUT_CHALLENGE)
                 .when()
-                .cookie(ssoCookieSigner.getSignedCookieValue(ssoCookie))
+                .cookie(ssoCookie)
                 .get(LOGOUT_INIT_REQUEST_MAPPING)
                 .then()
                 .assertThat()
@@ -540,9 +501,11 @@ class LogoutControllerTest extends BaseTest {
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json; charset=UTF-8")
                         .withBodyFile("mock_responses/mock_sso_oidc_logout_request_with_%s_post_logout_redirect_uri.json".formatted(postLogoutRedirectUri))));
+        String ssoCookie = createSignedSsoCookie();
 
         given()
                 .param("logout_challenge", TEST_LOGOUT_CHALLENGE)
+                .cookie(ssoCookie)
                 .when()
                 .get(LOGOUT_INIT_REQUEST_MAPPING)
                 .then()
@@ -560,9 +523,11 @@ class LogoutControllerTest extends BaseTest {
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json; charset=UTF-8")
                         .withBodyFile("mock_responses/mock_sso_oidc_logout_request_with_multiple_post_logout_redirect_uris.json")));
+        String ssoCookie = createSignedSsoCookie();
 
         given()
                 .param("logout_challenge", TEST_LOGOUT_CHALLENGE)
+                .cookie(ssoCookie)
                 .when()
                 .get(LOGOUT_INIT_REQUEST_MAPPING)
                 .then()
@@ -576,12 +541,12 @@ class LogoutControllerTest extends BaseTest {
     @ParameterizedTest
     @ValueSource(strings = {"", "......", "00000000-1111-2222-3333-4444444444445", "00000000-1111-2222-3333444444444444", "3C3EF85A-3D8B-4EA2-BB53-B66BC5BD1931"})
     void logoutInit_WhenLogoutChallengeInvalid_ThrowsUserInputError(String logoutChallenge) {
-        SsoCookie ssoCookie = createSsoCookie();
+        String ssoCookie = createSignedSsoCookie();
 
         given()
                 .param("logout_challenge", logoutChallenge)
                 .when()
-                .cookie(ssoCookieSigner.getSignedCookieValue(ssoCookie))
+                .cookie(ssoCookie)
                 .get(LOGOUT_INIT_REQUEST_MAPPING)
                 .then()
                 .assertThat()
@@ -593,9 +558,12 @@ class LogoutControllerTest extends BaseTest {
 
     @Test
     void logoutInit_WhenLogoutChallengeParamIsDuplicate_ThrowsUserInputError() {
+        String ssoCookie = createSignedSsoCookie();
+
         given()
                 .param("logout_challenge", TEST_LOGOUT_CHALLENGE)
                 .param("logout_challenge", "abcdeff098aadfccabcdeff098aadfca")
+                .cookie(ssoCookie)
                 .when()
                 .get(LOGOUT_INIT_REQUEST_MAPPING)
                 .then()
@@ -608,7 +576,10 @@ class LogoutControllerTest extends BaseTest {
 
     @Test
     void logoutInit_WhenLogoutChallengeMissing_ThrowsUserInputError() {
+        String ssoCookie = createSignedSsoCookie();
+
         given()
+                .cookie(ssoCookie)
                 .when()
                 .get(LOGOUT_INIT_REQUEST_MAPPING)
                 .then()
@@ -621,16 +592,15 @@ class LogoutControllerTest extends BaseTest {
 
     @Test
     void logoutInit_WhenFetchLogoutRequestInfoRespondsWith404_ThrowsUserInputError() {
-        SsoCookie ssoCookie = createSsoCookie();
-
         HYDRA_MOCK_SERVER.stubFor(get(urlEqualTo("/oauth2/auth/requests/logout?logout_challenge=" + TEST_LOGOUT_CHALLENGE))
                 .willReturn(aResponse()
                         .withStatus(404)));
+        String ssoCookie = createSignedSsoCookie();
 
         given()
                 .param("logout_challenge", TEST_LOGOUT_CHALLENGE)
                 .when()
-                .cookie(ssoCookieSigner.getSignedCookieValue(ssoCookie))
+                .cookie(ssoCookie)
                 .get(LOGOUT_INIT_REQUEST_MAPPING)
                 .then()
                 .assertThat()
@@ -642,16 +612,15 @@ class LogoutControllerTest extends BaseTest {
 
     @Test
     void logoutInit_WhenFetchLogoutRequestInfoRespondsWith410_ThrowsUserInputError() {
-        SsoCookie ssoCookie = createSsoCookie();
-
         HYDRA_MOCK_SERVER.stubFor(get(urlEqualTo("/oauth2/auth/requests/logout?logout_challenge=" + TEST_LOGOUT_CHALLENGE))
                 .willReturn(aResponse()
                         .withStatus(410)));
+        String ssoCookie = createSignedSsoCookie();
 
         given()
                 .param("logout_challenge", TEST_LOGOUT_CHALLENGE)
                 .when()
-                .cookie(ssoCookieSigner.getSignedCookieValue(ssoCookie))
+                .cookie(ssoCookie)
                 .get(LOGOUT_INIT_REQUEST_MAPPING)
                 .then()
                 .assertThat()
@@ -663,16 +632,15 @@ class LogoutControllerTest extends BaseTest {
 
     @Test
     void logoutInit_WhenFetchLogoutRequestInfoRespondsWith500_ThrowsTechnicalGeneralError() {
-        SsoCookie ssoCookie = createSsoCookie();
-
         HYDRA_MOCK_SERVER.stubFor(get(urlEqualTo("/oauth2/auth/requests/logout?logout_challenge=" + TEST_LOGOUT_CHALLENGE))
                 .willReturn(aResponse()
                         .withStatus(500)));
+        String ssoCookie = createSignedSsoCookie();
 
         given()
                 .param("logout_challenge", TEST_LOGOUT_CHALLENGE)
                 .when()
-                .cookie(ssoCookieSigner.getSignedCookieValue(ssoCookie))
+                .cookie(ssoCookie)
                 .get(LOGOUT_INIT_REQUEST_MAPPING)
                 .then()
                 .assertThat()
@@ -684,30 +652,27 @@ class LogoutControllerTest extends BaseTest {
 
     @Test
     void logoutInit_WhenGetConsentsReturnsEmptyList_ReturnsRedirect() {
-        SsoCookie ssoCookie = createSsoCookie();
-
         HYDRA_MOCK_SERVER.stubFor(get(urlEqualTo("/oauth2/auth/requests/logout?logout_challenge=" + TEST_LOGOUT_CHALLENGE))
                 .willReturn(aResponse()
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json; charset=UTF-8")
                         .withBodyFile("mock_responses/mock_sso_oidc_logout_request.json")));
-
         HYDRA_MOCK_SERVER.stubFor(get(urlEqualTo("/oauth2/auth/sessions/consent?subject=Isikukood3"))
                 .willReturn(aResponse()
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json; charset=UTF-8")
                         .withBodyFile("mock_responses/mock_sso_oidc_consents_missing.json")));
-
         HYDRA_MOCK_SERVER.stubFor(put(urlEqualTo("/oauth2/auth/requests/logout/accept?logout_challenge=" + TEST_LOGOUT_CHALLENGE))
                 .willReturn(aResponse()
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json; charset=UTF-8")
                         .withBodyFile("mock_responses/mock_sso_oidc_logout_accept.json")));
+        String ssoCookie = createSignedSsoCookie();
 
         given()
                 .param("logout_challenge", TEST_LOGOUT_CHALLENGE)
                 .when()
-                .cookie(ssoCookieSigner.getSignedCookieValue(ssoCookie))
+                .cookie(ssoCookie)
                 .get(LOGOUT_INIT_REQUEST_MAPPING)
                 .then()
                 .assertThat()
@@ -727,9 +692,11 @@ class LogoutControllerTest extends BaseTest {
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json; charset=UTF-8")
                         .withBodyFile("mock_responses/mock_sso_oidc_consents_single_consent.json")));
+        String ssoCookie = createSignedSsoCookie();
 
         given()
                 .param("logout_challenge", TEST_LOGOUT_CHALLENGE)
+                .cookie(ssoCookie)
                 .when()
                 .get(LOGOUT_INIT_REQUEST_MAPPING)
                 .then()
@@ -758,9 +725,11 @@ class LogoutControllerTest extends BaseTest {
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json; charset=UTF-8")
                         .withBodyFile("mock_responses/mock_sso_oidc_logout_accept.json")));
+        String ssoCookie = createSignedSsoCookie();
 
         given()
                 .param("logout_challenge", TEST_LOGOUT_CHALLENGE)
+                .cookie(ssoCookie)
                 .when()
                 .get(LOGOUT_INIT_REQUEST_MAPPING)
                 .then()
@@ -772,22 +741,20 @@ class LogoutControllerTest extends BaseTest {
 
     @Test
     void logoutInit_WhenGetConsentsRespondsWith500_ThrowsTechnicalGeneralError() {
-        SsoCookie ssoCookie = createSsoCookie();
-
         HYDRA_MOCK_SERVER.stubFor(get(urlEqualTo("/oauth2/auth/requests/logout?logout_challenge=" + TEST_LOGOUT_CHALLENGE))
                 .willReturn(aResponse()
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json; charset=UTF-8")
                         .withBodyFile("mock_responses/mock_sso_oidc_logout_request.json")));
-
         HYDRA_MOCK_SERVER.stubFor(get(urlEqualTo("/oauth2/auth/sessions/consent?subject=Isikukood3"))
                 .willReturn(aResponse()
                         .withStatus(500)));
+        String ssoCookie = createSignedSsoCookie();
 
         given()
                 .param("logout_challenge", TEST_LOGOUT_CHALLENGE)
                 .when()
-                .cookie(ssoCookieSigner.getSignedCookieValue(ssoCookie))
+                .cookie(ssoCookie)
                 .get(LOGOUT_INIT_REQUEST_MAPPING)
                 .then()
                 .assertThat()
@@ -799,28 +766,25 @@ class LogoutControllerTest extends BaseTest {
 
     @Test
     void logoutInit_WhenAcceptLogoutRespondsWith404_ThrowsUserInputError() {
-        SsoCookie ssoCookie = createSsoCookie();
-
         HYDRA_MOCK_SERVER.stubFor(get(urlEqualTo("/oauth2/auth/requests/logout?logout_challenge=" + TEST_LOGOUT_CHALLENGE))
                 .willReturn(aResponse()
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json; charset=UTF-8")
                         .withBodyFile("mock_responses/mock_sso_oidc_logout_request.json")));
-
         HYDRA_MOCK_SERVER.stubFor(get(urlEqualTo("/oauth2/auth/sessions/consent?subject=Isikukood3"))
                 .willReturn(aResponse()
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json; charset=UTF-8")
                         .withBodyFile("mock_responses/mock_sso_oidc_consents_single_consent.json")));
-
         HYDRA_MOCK_SERVER.stubFor(put(urlEqualTo("/oauth2/auth/requests/logout/accept?logout_challenge=" + TEST_LOGOUT_CHALLENGE))
                 .willReturn(aResponse()
                         .withStatus(404)));
+        String ssoCookie = createSignedSsoCookie();
 
         given()
                 .param("logout_challenge", TEST_LOGOUT_CHALLENGE)
                 .when()
-                .cookie(ssoCookieSigner.getSignedCookieValue(ssoCookie))
+                .cookie(ssoCookie)
                 .get(LOGOUT_INIT_REQUEST_MAPPING)
                 .then()
                 .assertThat()
@@ -832,28 +796,25 @@ class LogoutControllerTest extends BaseTest {
 
     @Test
     void logoutInit_WhenAcceptLogoutRespondsWith500_ThrowsTechnicalGeneralError() {
-        SsoCookie ssoCookie = createSsoCookie();
-
         HYDRA_MOCK_SERVER.stubFor(get(urlEqualTo("/oauth2/auth/requests/logout?logout_challenge=" + TEST_LOGOUT_CHALLENGE))
                 .willReturn(aResponse()
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json; charset=UTF-8")
                         .withBodyFile("mock_responses/mock_sso_oidc_logout_request.json")));
-
         HYDRA_MOCK_SERVER.stubFor(get(urlEqualTo("/oauth2/auth/sessions/consent?subject=Isikukood3"))
                 .willReturn(aResponse()
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json; charset=UTF-8")
                         .withBodyFile("mock_responses/mock_sso_oidc_consents_single_consent.json")));
-
         HYDRA_MOCK_SERVER.stubFor(put(urlEqualTo("/oauth2/auth/requests/logout/accept?logout_challenge=" + TEST_LOGOUT_CHALLENGE))
                 .willReturn(aResponse()
                         .withStatus(500)));
+        String ssoCookie = createSignedSsoCookie();
 
         given()
                 .param("logout_challenge", TEST_LOGOUT_CHALLENGE)
                 .when()
-                .cookie(ssoCookieSigner.getSignedCookieValue(ssoCookie))
+                .cookie(ssoCookie)
                 .get(LOGOUT_INIT_REQUEST_MAPPING)
                 .then()
                 .assertThat()
@@ -870,15 +831,16 @@ class LogoutControllerTest extends BaseTest {
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json; charset=UTF-8")
                         .withBodyFile("mock_responses/mock_sso_oidc_logout_request.json")));
-
         HYDRA_MOCK_SERVER.stubFor(put(urlEqualTo("/oauth2/auth/requests/logout/accept?logout_challenge=" + TEST_LOGOUT_CHALLENGE))
                 .willReturn(aResponse()
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json; charset=UTF-8")
                         .withBodyFile("mock_responses/mock_sso_oidc_logout_accept.json")));
+        String ssoCookie = createSignedSsoCookie();
 
         given()
                 .cookie(COOKIE_NAME_XSRF_TOKEN, MOCK_CSRF_TOKEN)
+                .cookie(ssoCookie)
                 .formParam("_csrf", MOCK_CSRF_TOKEN)
                 .formParam("logoutChallenge", TEST_LOGOUT_CHALLENGE)
                 .when()
@@ -892,9 +854,11 @@ class LogoutControllerTest extends BaseTest {
     @ParameterizedTest
     @ValueSource(strings = {"", "......", "00000000-1111-2222-3333-4444444444445", "00000000-1111-2222-3333444444444444", "3C3EF85A-3D8B-4EA2-BB53-B66BC5BD1931"})
     void endSession_WhenLogoutChallengeInvalid_ThrowsUserInputError(String logoutChallenge) {
+        String ssoCookie = createSignedSsoCookie();
 
         given()
                 .cookie(COOKIE_NAME_XSRF_TOKEN, MOCK_CSRF_TOKEN)
+                .cookie(ssoCookie)
                 .formParam("_csrf", MOCK_CSRF_TOKEN)
                 .formParam("logoutChallenge", logoutChallenge)
                 .when()
@@ -914,9 +878,11 @@ class LogoutControllerTest extends BaseTest {
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json; charset=UTF-8")
                         .withBodyFile("mock_responses/mock_sso_oidc_logout_request_rp_initiated_false.json")));
+        String ssoCookie = createSignedSsoCookie();
 
         given()
                 .cookie(COOKIE_NAME_XSRF_TOKEN, MOCK_CSRF_TOKEN)
+                .cookie(ssoCookie)
                 .formParam("_csrf", MOCK_CSRF_TOKEN)
                 .formParam("logoutChallenge", TEST_LOGOUT_CHALLENGE)
                 .when()
@@ -937,9 +903,11 @@ class LogoutControllerTest extends BaseTest {
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json; charset=UTF-8")
                         .withBodyFile("mock_responses/mock_sso_oidc_logout_request_with_%s_post_logout_redirect_uri.json".formatted(postLogoutRedirectUri))));
+        String ssoCookie = createSignedSsoCookie();
 
         given()
                 .cookie(COOKIE_NAME_XSRF_TOKEN, MOCK_CSRF_TOKEN)
+                .cookie(ssoCookie)
                 .formParam("_csrf", MOCK_CSRF_TOKEN)
                 .formParam("logoutChallenge", TEST_LOGOUT_CHALLENGE)
                 .when()
@@ -959,13 +927,14 @@ class LogoutControllerTest extends BaseTest {
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json; charset=UTF-8")
                         .withBodyFile("mock_responses/mock_sso_oidc_logout_request.json")));
-
         HYDRA_MOCK_SERVER.stubFor(put(urlEqualTo("/oauth2/auth/requests/logout/accept?logout_challenge=" + TEST_LOGOUT_CHALLENGE))
                 .willReturn(aResponse()
                         .withStatus(404)));
+        String ssoCookie = createSignedSsoCookie();
 
         given()
                 .cookie(COOKIE_NAME_XSRF_TOKEN, MOCK_CSRF_TOKEN)
+                .cookie(ssoCookie)
                 .formParam("_csrf", MOCK_CSRF_TOKEN)
                 .formParam("logoutChallenge", TEST_LOGOUT_CHALLENGE)
                 .when()
@@ -985,13 +954,14 @@ class LogoutControllerTest extends BaseTest {
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json; charset=UTF-8")
                         .withBodyFile("mock_responses/mock_sso_oidc_logout_request.json")));
-
         HYDRA_MOCK_SERVER.stubFor(put(urlEqualTo("/oauth2/auth/requests/logout/accept?logout_challenge=" + TEST_LOGOUT_CHALLENGE))
                 .willReturn(aResponse()
                         .withStatus(500)));
+        String ssoCookie = createSignedSsoCookie();
 
         given()
                 .cookie(COOKIE_NAME_XSRF_TOKEN, MOCK_CSRF_TOKEN)
+                .cookie(ssoCookie)
                 .formParam("_csrf", MOCK_CSRF_TOKEN)
                 .formParam("logoutChallenge", TEST_LOGOUT_CHALLENGE)
                 .when()
@@ -1011,14 +981,15 @@ class LogoutControllerTest extends BaseTest {
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json; charset=UTF-8")
                         .withBodyFile("mock_responses/mock_sso_oidc_logout_request.json")));
-
         HYDRA_MOCK_SERVER.stubFor(put(urlEqualTo("/oauth2/auth/requests/logout/reject?logout_challenge=" + TEST_LOGOUT_CHALLENGE))
                 .willReturn(aResponse()
                         .withStatus(201)
                         .withHeader("Content-Type", "application/json; charset=UTF-8")));
+        String ssoCookie = createSignedSsoCookie();
 
         given()
                 .cookie(COOKIE_NAME_XSRF_TOKEN, MOCK_CSRF_TOKEN)
+                .cookie(ssoCookie)
                 .formParam("_csrf", MOCK_CSRF_TOKEN)
                 .formParam("logoutChallenge", TEST_LOGOUT_CHALLENGE)
                 .when()
@@ -1032,9 +1003,11 @@ class LogoutControllerTest extends BaseTest {
     @ParameterizedTest
     @ValueSource(strings = {"", "......", "00000000-1111-2222-3333-4444444444445", "00000000-1111-2222-3333444444444444", "3C3EF85A-3D8B-4EA2-BB53-B66BC5BD1931"})
     void continueSession_WhenLogoutChallengeInvalid_ThrowsUserInputError(String logoutChallenge) {
+        String ssoCookie = createSignedSsoCookie();
 
         given()
                 .cookie(COOKIE_NAME_XSRF_TOKEN, MOCK_CSRF_TOKEN)
+                .cookie(ssoCookie)
                 .formParam("_csrf", MOCK_CSRF_TOKEN)
                 .formParam("logoutChallenge", logoutChallenge)
                 .when()
@@ -1054,9 +1027,11 @@ class LogoutControllerTest extends BaseTest {
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json; charset=UTF-8")
                         .withBodyFile("mock_responses/mock_sso_oidc_logout_request_rp_initiated_false.json")));
+        String ssoCookie = createSignedSsoCookie();
 
         given()
                 .cookie(COOKIE_NAME_XSRF_TOKEN, MOCK_CSRF_TOKEN)
+                .cookie(ssoCookie)
                 .formParam("_csrf", MOCK_CSRF_TOKEN)
                 .formParam("logoutChallenge", TEST_LOGOUT_CHALLENGE)
                 .when()
@@ -1077,9 +1052,11 @@ class LogoutControllerTest extends BaseTest {
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json; charset=UTF-8")
                         .withBodyFile("mock_responses/mock_sso_oidc_logout_request_with_%s_post_logout_redirect_uri.json".formatted(postLogoutRedirectUri))));
+        String ssoCookie = createSignedSsoCookie();
 
         given()
                 .cookie(COOKIE_NAME_XSRF_TOKEN, MOCK_CSRF_TOKEN)
+                .cookie(ssoCookie)
                 .formParam("_csrf", MOCK_CSRF_TOKEN)
                 .formParam("logoutChallenge", TEST_LOGOUT_CHALLENGE)
                 .when()
@@ -1097,9 +1074,11 @@ class LogoutControllerTest extends BaseTest {
         HYDRA_MOCK_SERVER.stubFor(get(urlEqualTo("/oauth2/auth/requests/logout?logout_challenge=" + TEST_LOGOUT_CHALLENGE))
                 .willReturn(aResponse()
                         .withStatus(404)));
+        String ssoCookie = createSignedSsoCookie();
 
         given()
                 .cookie(COOKIE_NAME_XSRF_TOKEN, MOCK_CSRF_TOKEN)
+                .cookie(ssoCookie)
                 .formParam("_csrf", MOCK_CSRF_TOKEN)
                 .formParam("logoutChallenge", TEST_LOGOUT_CHALLENGE)
                 .when()
@@ -1117,9 +1096,11 @@ class LogoutControllerTest extends BaseTest {
         HYDRA_MOCK_SERVER.stubFor(get(urlEqualTo("/oauth2/auth/requests/logout?logout_challenge=" + TEST_LOGOUT_CHALLENGE))
                 .willReturn(aResponse()
                         .withStatus(410)));
+        String ssoCookie = createSignedSsoCookie();
 
         given()
                 .cookie(COOKIE_NAME_XSRF_TOKEN, MOCK_CSRF_TOKEN)
+                .cookie(ssoCookie)
                 .formParam("_csrf", MOCK_CSRF_TOKEN)
                 .formParam("logoutChallenge", TEST_LOGOUT_CHALLENGE)
                 .when()
@@ -1137,9 +1118,11 @@ class LogoutControllerTest extends BaseTest {
         HYDRA_MOCK_SERVER.stubFor(get(urlEqualTo("/oauth2/auth/requests/logout?logout_challenge=" + TEST_LOGOUT_CHALLENGE))
                 .willReturn(aResponse()
                         .withStatus(500)));
+        String ssoCookie = createSignedSsoCookie();
 
         given()
                 .cookie(COOKIE_NAME_XSRF_TOKEN, MOCK_CSRF_TOKEN)
+                .cookie(ssoCookie)
                 .formParam("_csrf", MOCK_CSRF_TOKEN)
                 .formParam("logoutChallenge", TEST_LOGOUT_CHALLENGE)
                 .when()
@@ -1159,14 +1142,15 @@ class LogoutControllerTest extends BaseTest {
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json; charset=UTF-8")
                         .withBodyFile("mock_responses/mock_sso_oidc_logout_request.json")));
-
         HYDRA_MOCK_SERVER.stubFor(put(urlEqualTo("/oauth2/auth/requests/logout/reject?logout_challenge=" + TEST_LOGOUT_CHALLENGE))
                 .willReturn(aResponse()
                         .withStatus(404)
                         .withHeader("Content-Type", "application/json; charset=UTF-8")));
+        String ssoCookie = createSignedSsoCookie();
 
         given()
                 .cookie(COOKIE_NAME_XSRF_TOKEN, MOCK_CSRF_TOKEN)
+                .cookie(ssoCookie)
                 .formParam("_csrf", MOCK_CSRF_TOKEN)
                 .formParam("logoutChallenge", TEST_LOGOUT_CHALLENGE)
                 .when()
@@ -1186,14 +1170,15 @@ class LogoutControllerTest extends BaseTest {
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json; charset=UTF-8")
                         .withBodyFile("mock_responses/mock_sso_oidc_logout_request.json")));
-
         HYDRA_MOCK_SERVER.stubFor(put(urlEqualTo("/oauth2/auth/requests/logout/reject?logout_challenge=" + TEST_LOGOUT_CHALLENGE))
                 .willReturn(aResponse()
                         .withStatus(500)
                         .withHeader("Content-Type", "application/json; charset=UTF-8")));
+        String ssoCookie = createSignedSsoCookie();
 
         given()
                 .cookie(COOKIE_NAME_XSRF_TOKEN, MOCK_CSRF_TOKEN)
+                .cookie(ssoCookie)
                 .formParam("_csrf", MOCK_CSRF_TOKEN)
                 .formParam("logoutChallenge", TEST_LOGOUT_CHALLENGE)
                 .when()
@@ -1206,9 +1191,11 @@ class LogoutControllerTest extends BaseTest {
         assertErrorIsLogged("SsoException: Failed to reject Hydra logout request --> 500 Internal Server Error from PUT");
     }
 
-    private SsoCookie createSsoCookie() {
-        return SsoCookie.builder()
+    private String createSignedSsoCookie() {
+        SsoCookie ssoCookie = SsoCookie.builder()
+                .sessionId(DigestUtils.sha256Hex(TEST_LOGIN_CHALLENGE))
                 .loginChallenge(TEST_LOGIN_CHALLENGE)
                 .build();
+        return ssoCookieSigner.getSignedCookieValue(ssoCookie);
     }
 }

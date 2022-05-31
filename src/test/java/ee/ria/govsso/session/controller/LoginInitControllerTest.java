@@ -19,6 +19,7 @@ import io.restassured.matcher.RestAssuredMatchers;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.codec.digest.DigestUtils;
 import org.hamcrest.Matchers;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
@@ -85,7 +86,7 @@ public class LoginInitControllerTest extends BaseTest {
                 .header("Location", Matchers.matchesRegex("https:\\/\\/tara.localhost:10000\\/oidc\\/authorize\\?ui_locales=et&scope=openid&acr_values=high&response_type=code&govsso_login_challenge=abcdeff098aadfccabcdeff098aadfcc&redirect_uri=https%3A%2F%2Fgateway.localhost%3A8000%2Flogin%2Ftaracallback&state=.*&nonce=.*&client_id=testclient123"))
                 .extract().cookie(COOKIE_NAME_GOVSSO);
 
-        SsoCookie ssoCookie = ssoCookieSigner.parseAndVerifyCookie(ssoCookieValue);
+        SsoCookie ssoCookie = ssoCookieSigner.getVerifiedSsoCookieOrNull(ssoCookieValue);
         assertThat(ssoCookie.getLoginChallenge(), equalTo(TEST_LOGIN_CHALLENGE));
     }
 
@@ -108,7 +109,7 @@ public class LoginInitControllerTest extends BaseTest {
                 .header("Location", Matchers.matchesRegex("https:\\/\\/tara.localhost:10000\\/oidc\\/authorize\\?ui_locales=et&scope=openid&acr_values=high&response_type=code&govsso_login_challenge=abcdeff098aadfccabcdeff098aadfcc&redirect_uri=https%3A%2F%2Fgateway.localhost%3A8000%2Flogin%2Ftaracallback&state=.*&nonce=.*&client_id=testclient123"))
                 .extract().cookie(COOKIE_NAME_GOVSSO);
 
-        SsoCookie ssoCookie = ssoCookieSigner.parseAndVerifyCookie(ssoCookieValue);
+        SsoCookie ssoCookie = ssoCookieSigner.getVerifiedSsoCookieOrNull(ssoCookieValue);
         assertThat(ssoCookie.getLoginChallenge(), equalTo(TEST_LOGIN_CHALLENGE));
     }
 
@@ -131,7 +132,7 @@ public class LoginInitControllerTest extends BaseTest {
                 .header("Location", Matchers.matchesRegex("https:\\/\\/tara.localhost:10000\\/oidc\\/authorize\\?ui_locales=et&scope=openid&acr_values=substantial&response_type=code&govsso_login_challenge=abcdeff098aadfccabcdeff098aadfcc&redirect_uri=https%3A%2F%2Fgateway.localhost%3A8000%2Flogin%2Ftaracallback&state=.*&nonce=.*&client_id=testclient123"))
                 .extract().cookie(COOKIE_NAME_GOVSSO);
 
-        SsoCookie ssoCookie = ssoCookieSigner.parseAndVerifyCookie(ssoCookieValue);
+        SsoCookie ssoCookie = ssoCookieSigner.getVerifiedSsoCookieOrNull(ssoCookieValue);
 
         assertThat(ssoCookie.getLoginChallenge(), equalTo(TEST_LOGIN_CHALLENGE));
     }
@@ -190,7 +191,7 @@ public class LoginInitControllerTest extends BaseTest {
                 .header("Location", Matchers.matchesRegex("https:\\/\\/tara.localhost:10000\\/oidc\\/authorize\\?ui_locales=et&scope=openid&acr_values=high&response_type=code&govsso_login_challenge=abcdeff098aadfccabcdeff098aadfcc&redirect_uri=https%3A%2F%2Fgateway.localhost%3A8000%2Flogin%2Ftaracallback&state=.*&nonce=.*&client_id=testclient123"))
                 .extract().cookie(COOKIE_NAME_GOVSSO);
 
-        SsoCookie ssoCookie = ssoCookieSigner.parseAndVerifyCookie(ssoCookieValue);
+        SsoCookie ssoCookie = ssoCookieSigner.getVerifiedSsoCookieOrNull(ssoCookieValue);
         assertThat(ssoCookie.getLoginChallenge(), equalTo(TEST_LOGIN_CHALLENGE));
     }
 
@@ -983,9 +984,14 @@ public class LoginInitControllerTest extends BaseTest {
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json; charset=UTF-8")
                         .withBodyFile("mock_responses/mock_sso_oidc_login_accept.json")));
+        SsoCookie ssoCookie = SsoCookie.builder()
+                .sessionId(DigestUtils.sha256Hex(TEST_LOGIN_CHALLENGE))
+                .loginChallenge(TEST_LOGIN_CHALLENGE)
+                .build();
 
         given()
                 .param("login_challenge", TEST_LOGIN_CHALLENGE)
+                .cookie(ssoCookieSigner.getSignedCookieValue(ssoCookie))
                 .when()
                 .get(LOGIN_INIT_REQUEST_MAPPING)
                 .then()

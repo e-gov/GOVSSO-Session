@@ -2,6 +2,7 @@ package ee.ria.govsso.session.configuration;
 
 import ee.ria.govsso.session.filter.DuplicateRequestParameterFilter;
 import ee.ria.govsso.session.filter.RequestCorrelationFilter;
+import ee.ria.govsso.session.session.SsoCookieSigner;
 import org.springframework.boot.info.BuildProperties;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
@@ -12,9 +13,9 @@ import org.springframework.core.Ordered;
 public class FilterConfiguration {
 
     @Bean
-    public FilterRegistrationBean<RequestCorrelationFilter> requestCorrelationFilter(BuildProperties buildProperties) {
+    public FilterRegistrationBean<RequestCorrelationFilter> requestCorrelationFilter(BuildProperties buildProperties, SsoCookieSigner ssoCookieSigner) {
         FilterRegistrationBean<RequestCorrelationFilter> registrationBean = new FilterRegistrationBean<>();
-        registrationBean.setFilter(new RequestCorrelationFilter(buildProperties));
+        registrationBean.setFilter(new RequestCorrelationFilter(buildProperties, ssoCookieSigner));
         registrationBean.setOrder(Ordered.LOWEST_PRECEDENCE - 1);
         return registrationBean;
     }

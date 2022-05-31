@@ -16,7 +16,6 @@ import java.time.Instant;
 import java.util.Date;
 import java.util.Map;
 
-import static ee.ria.govsso.session.logging.StatisticsLogger.AuthenticationRequestType.START_SESSION;
 import static ee.ria.govsso.session.logging.StatisticsLogger.AuthenticationState.AUTHENTICATION_CANCELED;
 import static ee.ria.govsso.session.logging.StatisticsLogger.AuthenticationState.AUTHENTICATION_FAILED;
 import static ee.ria.govsso.session.logging.StatisticsLogger.AuthenticationState.AUTHENTICATION_SUCCESS;

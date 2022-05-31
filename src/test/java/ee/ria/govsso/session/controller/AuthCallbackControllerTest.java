@@ -1,7 +1,11 @@
 package ee.ria.govsso.session.controller;
 
+import com.nimbusds.jose.JWSAlgorithm;
 import com.nimbusds.jose.JWSHeader;
+import com.nimbusds.jose.JWSObject;
 import com.nimbusds.jose.JWSSigner;
+import com.nimbusds.jose.Payload;
+import com.nimbusds.jose.crypto.MACSigner;
 import com.nimbusds.jose.crypto.RSASSASigner;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
@@ -18,18 +22,26 @@ import ee.ria.govsso.session.session.SsoCookieSigner;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.codec.digest.DigestUtils;
 import org.hamcrest.Matchers;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseCookie;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
 import java.time.Instant;
+import java.util.AbstractMap;
 import java.util.Date;
+import java.util.Map;
+import java.util.TreeMap;
+import java.util.UUID;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
@@ -38,9 +50,15 @@ import static com.github.tomakehurst.wiremock.client.WireMock.put;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static com.nimbusds.jose.JWSAlgorithm.RS256;
 import static ee.ria.govsso.session.controller.AuthCallbackController.CALLBACK_REQUEST_MAPPING;
+import static ee.ria.govsso.session.session.SsoCookie.COOKIE_NAME_GOVSSO;
+import static ee.ria.govsso.session.session.SsoCookie.COOKIE_VALUE_LOGIN_CHALLENGE;
+import static ee.ria.govsso.session.session.SsoCookie.COOKIE_VALUE_SESSION_ID;
+import static ee.ria.govsso.session.session.SsoCookie.COOKIE_VALUE_TARA_NONCE;
+import static ee.ria.govsso.session.session.SsoCookie.COOKIE_VALUE_TARA_STATE;
 import static io.restassured.RestAssured.given;
 import static java.util.Collections.emptyMap;
 import static org.hamcrest.Matchers.equalTo;
+import static org.springframework.boot.web.server.Cookie.SameSite.LAX;
 import static org.springframework.http.HttpHeaders.ORIGIN;
 
 @Slf4j
@@ -462,6 +480,44 @@ class AuthCallbackControllerTest extends BaseTest {
     }
 
     @Test
+    @SneakyThrows
+    void authCallback_WhenInvalidSsoCookieSignature_ThrowsUserInputError() {
+        SsoCookie ssoCookie = createSsoCookie();
+        Map<String, Object> cookieValues = Stream.of(
+                        new AbstractMap.SimpleImmutableEntry<>(COOKIE_VALUE_SESSION_ID, ssoCookie.getSessionId()),
+                        new AbstractMap.SimpleImmutableEntry<>(COOKIE_VALUE_LOGIN_CHALLENGE, ssoCookie.getLoginChallenge()),
+                        new AbstractMap.SimpleImmutableEntry<>(COOKIE_VALUE_TARA_STATE, ssoCookie.getTaraAuthenticationRequestState()),
+                        new AbstractMap.SimpleImmutableEntry<>(COOKIE_VALUE_TARA_NONCE, ssoCookie.getTaraAuthenticationRequestNonce()))
+                .filter(m -> m.getValue() != null)
+                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (v1, v2) -> v2, TreeMap::new));
+        Payload payload = new Payload(cookieValues);
+        MACSigner signer = new MACSigner(UUID.randomUUID().toString());
+        JWSObject jwsObject = new JWSObject(new JWSHeader(JWSAlgorithm.HS256), payload);
+        jwsObject.sign(signer);
+        String unsignedCookie = ResponseCookie
+                .from(COOKIE_NAME_GOVSSO, jwsObject.serialize())
+                .sameSite(LAX.attributeValue())
+                .maxAge(900)
+                .path("/")
+                .httpOnly(true)
+                .secure(true)
+                .build().toString();
+
+        given()
+                .param("code", TEST_CODE)
+                .param("state", TEST_STATE)
+                .cookie(unsignedCookie)
+                .when()
+                .get(CALLBACK_REQUEST_MAPPING)
+                .then()
+                .assertThat()
+                .statusCode(400)
+                .body("error", equalTo("USER_COOKIE_MISSING"));
+
+        assertErrorIsLogged("SsoException: Missing or expired cookie");
+    }
+
+    @Test
     void authCallback_WhenSsoCookieTaraStateValueIsNull_ThrowsUserInputError() {
 
         SsoCookie ssoCookie = createSsoCookie().withTaraAuthenticationRequestState(null);
@@ -699,6 +755,7 @@ class AuthCallbackControllerTest extends BaseTest {
     private SsoCookie createSsoCookie() {
         AuthenticationRequest authenticationRequest = taraService.createAuthenticationRequest("high", TEST_LOGIN_CHALLENGE);
         return SsoCookie.builder()
+                .sessionId(DigestUtils.sha256Hex(TEST_LOGIN_CHALLENGE))
                 .loginChallenge(TEST_LOGIN_CHALLENGE)
                 .taraAuthenticationRequestState(authenticationRequest.getState().getValue())
                 .taraAuthenticationRequestNonce(authenticationRequest.getNonce().getValue())

@@ -5,6 +5,10 @@ import lombok.experimental.UtilityClass;
 import javax.servlet.http.Cookie;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
+import java.util.Optional;
+
+import static ee.ria.govsso.session.session.SsoCookie.COOKIE_NAME_GOVSSO;
+import static java.util.Arrays.stream;
 
 @UtilityClass
 public class CookieUtil {
@@ -26,6 +30,16 @@ public class CookieUtil {
                     response.addCookie(newCookie);
                 }
             }
+        }
+    }
+
+    public Cookie getCookie(HttpServletRequest request, String cookieName) {
+        Cookie[] cookies = request.getCookies();
+        if (cookies != null) {
+            Optional<Cookie> cookie = stream(cookies).filter(c -> c.getName().equals(COOKIE_NAME_GOVSSO)).findFirst();
+            return cookie.orElse(null);
+        } else {
+            return null;
         }
     }
 

@@ -5,6 +5,7 @@ import ee.ria.govsso.session.BaseTest;
 import ee.ria.govsso.session.configuration.properties.SecurityConfigurationProperties;
 import ee.ria.govsso.session.error.exceptions.SsoException;
 import lombok.RequiredArgsConstructor;
+import org.apache.commons.codec.digest.DigestUtils;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -20,6 +21,7 @@ import java.util.stream.Stream;
 import static ee.ria.govsso.session.error.ErrorCode.TECHNICAL_GENERAL;
 import static ee.ria.govsso.session.error.ErrorCode.USER_INPUT;
 import static ee.ria.govsso.session.session.SsoCookie.COOKIE_VALUE_LOGIN_CHALLENGE;
+import static ee.ria.govsso.session.session.SsoCookie.COOKIE_VALUE_SESSION_ID;
 import static ee.ria.govsso.session.session.SsoCookie.COOKIE_VALUE_TARA_NONCE;
 import static ee.ria.govsso.session.session.SsoCookie.COOKIE_VALUE_TARA_STATE;
 import static java.lang.String.format;
@@ -33,11 +35,13 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 class SsoCookieSignerTest extends BaseTest {
 
     public static final SsoCookie SSO_COOKIE = SsoCookie.builder()
+            .sessionId(DigestUtils.sha256Hex("9eeb3fc335e246879377098bfdc91d2f"))
             .loginChallenge("9eeb3fc335e246879377098bfdc91d2f")
             .taraAuthenticationRequestState("uol5UdH_QLuKNvT-FlU-Ykmb_tzNhF02nr5clm-q1sc")
             .taraAuthenticationRequestNonce("CLJka9zYBh9cSlkFTGXItNoznEheueIgq-zm3BiDz0s")
             .build();
     public static final Map<String, Object> SSO_COOKIE_VALUES = Stream.of(
+                    new SimpleImmutableEntry<>(COOKIE_VALUE_SESSION_ID, DigestUtils.sha256Hex(SSO_COOKIE.getLoginChallenge())),
                     new SimpleImmutableEntry<>(COOKIE_VALUE_LOGIN_CHALLENGE, SSO_COOKIE.getLoginChallenge()),
                     new SimpleImmutableEntry<>(COOKIE_VALUE_TARA_STATE, SSO_COOKIE.getTaraAuthenticationRequestState()),
                     new SimpleImmutableEntry<>(COOKIE_VALUE_TARA_NONCE, SSO_COOKIE.getTaraAuthenticationRequestNonce()))
@@ -48,8 +52,8 @@ class SsoCookieSignerTest extends BaseTest {
     private static final String SSO_COOKIE_RS256_HEADER = "eyJhbGciOiJSUzI1NiJ9";
     private static final String SSO_COOKIE_EMPTY_ALG_HEADER = "eyJhbGciOiIifQ==";
     private static final String SSO_COOKIE_NO_ALG_HEADER = "e30=";
-    private static final String SSO_COOKIE_PAYLOAD = "eyJ0YXJhX3N0YXRlIjoidW9sNVVkSF9RTHVLTnZULUZsVS1Za21iX3R6TmhGMDJucjVjbG0tcTFzYyIsImxvZ2luX2NoYWxsZW5nZSI6IjllZWIzZmMzMzVlMjQ2ODc5Mzc3MDk4YmZkYzkxZDJmIiwidGFyYV9ub25jZSI6IkNMSmthOXpZQmg5Y1Nsa0ZUR1hJdE5vem5FaGV1ZUlncS16bTNCaUR6MHMifQ";
-    private static final String SSO_COOKIE_HS256_SIGNATURE = "jRh0e21tAfmC64y6onwEGWHHjxrmrYwAOHvpzO6eC9U";
+    private static final String SSO_COOKIE_PAYLOAD = "eyJ0YXJhX3N0YXRlIjoidW9sNVVkSF9RTHVLTnZULUZsVS1Za21iX3R6TmhGMDJucjVjbG0tcTFzYyIsInNlc3Npb25faWQiOiIxNDRiZWYzMWIxMzZhOWIzZTg3ZWRlNDkwMGJjODMxY2Y2MWRkYjJhOWEzOTZjMGRjZjFjMjhlMDM4ZGY4OTJmIiwibG9naW5fY2hhbGxlbmdlIjoiOWVlYjNmYzMzNWUyNDY4NzkzNzcwOThiZmRjOTFkMmYiLCJ0YXJhX25vbmNlIjoiQ0xKa2E5ellCaDljU2xrRlRHWEl0Tm96bkVoZXVlSWdxLXptM0JpRHowcyJ9";
+    private static final String SSO_COOKIE_HS256_SIGNATURE = "lER7S9OxMPTMwCtcCdCGkUkmXqUnWkpLQ3R7Wvv3-kk";
     private static final String VALID_SIGNATURE_SSO_COOKIE_VALUE = format("%s.%s.%s", SSO_COOKIE_HS256_HEADER, SSO_COOKIE_PAYLOAD, SSO_COOKIE_HS256_SIGNATURE);
     private static final String SSO_COOKIE_SIGNING_SECRET = "fec1e8ee45b84f7f66824f7797f759f191c696020f5187744a1a3532935bd5ec";
     private final SsoCookieSigner ssoCookieSigner;
@@ -58,7 +62,7 @@ class SsoCookieSignerTest extends BaseTest {
     @Test
     void parseAndVerifyCookie_WhenValidSignature_ReturnsSsoCookieObject() {
 
-        SsoCookie ssoCookie = ssoCookieSigner.parseAndVerifyCookie(VALID_SIGNATURE_SSO_COOKIE_VALUE);
+        SsoCookie ssoCookie = ssoCookieSigner.getVerifiedSsoCookie(VALID_SIGNATURE_SSO_COOKIE_VALUE);
 
         assertThat(ssoCookie.getLoginChallenge(), equalTo(SSO_COOKIE.getLoginChallenge()));
         assertThat(ssoCookie.getTaraAuthenticationRequestState(), equalTo(SSO_COOKIE.getTaraAuthenticationRequestState()));
@@ -73,7 +77,7 @@ class SsoCookieSignerTest extends BaseTest {
     void parseAndVerifyCookie_WhenParseException_ThrowsUserInputError(String ssoCookieValue) {
 
         SsoException ex = assertThrows(SsoException.class,
-                () -> ssoCookieSigner.parseAndVerifyCookie(ssoCookieValue));
+                () -> ssoCookieSigner.getVerifiedSsoCookie(ssoCookieValue));
 
         assertThat(ex.getErrorCode(), equalTo(USER_INPUT));
         assertThat(ex.getMessage(), equalTo("Unable to parse SsoCookie"));
@@ -90,7 +94,7 @@ class SsoCookieSignerTest extends BaseTest {
     void parseAndVerifyCookie_WhenInvalidSignature_ThrowsUserInputError(String ssoCookieValue) {
 
         SsoException ex = assertThrows(SsoException.class,
-                () -> ssoCookieSigner.parseAndVerifyCookie(ssoCookieValue));
+                () -> ssoCookieSigner.getVerifiedSsoCookie(ssoCookieValue));
 
         assertThat(ex.getErrorCode(), equalTo(USER_INPUT));
         assertThat(ex.getMessage(), equalTo("Invalid SsoCookie signature"));
@@ -104,7 +108,7 @@ class SsoCookieSignerTest extends BaseTest {
     void parseAndVerifyCookie_WhenInvalidAlg_ThrowsUserInputError(String ssoCookieValue) {
 
         SsoException ex = assertThrows(SsoException.class,
-                () -> ssoCookieSigner.parseAndVerifyCookie(ssoCookieValue));
+                () -> ssoCookieSigner.getVerifiedSsoCookie(ssoCookieValue));
 
         assertThat(ex.getErrorCode(), equalTo(USER_INPUT));
         assertThat(ex.getMessage(), equalTo("Unable to verify SsoCookie signature"));
@@ -115,7 +119,7 @@ class SsoCookieSignerTest extends BaseTest {
 
         var ssoCookieValue = ssoCookieSigner.getSignedCookieValue(SSO_COOKIE);
 
-        String cookieWithCorrectParameters = "__Host-GOVSSO=%s; Path=/; Max-Age=%s; Expires=.*; Secure; HttpOnly; SameSite=Lax"
+        String cookieWithCorrectParameters = "__Host-GOVSSO=%s; Path=/; Max-Age=%s; Expires=.*; Secure; HttpOnly; SameSite=None"
                 .formatted(VALID_SIGNATURE_SSO_COOKIE_VALUE, securityConfigurationProperties.getCookieMaxAgeSeconds());
         assertThat(ssoCookieValue, matchesRegex(cookieWithCorrectParameters));
     }

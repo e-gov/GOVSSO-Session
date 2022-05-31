@@ -1,5 +1,6 @@
 package ee.ria.govsso.session.controller;
 
+import co.elastic.apm.api.ElasticApm;
 import com.nimbusds.jwt.JWT;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.openid.connect.sdk.AuthenticationRequest;
@@ -22,7 +23,9 @@ import ee.ria.govsso.session.util.PromptUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.codec.digest.DigestUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -34,6 +37,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.servlet.ModelAndView;
 import org.thymeleaf.util.ArrayUtils;
 
+import javax.servlet.http.Cookie;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import javax.validation.constraints.Pattern;
@@ -44,10 +48,12 @@ import java.util.List;
 import java.util.Map;
 
 import static ee.ria.govsso.session.error.ErrorCode.TECHNICAL_GENERAL;
+import static ee.ria.govsso.session.filter.RequestCorrelationFilter.MDC_ATTRIBUTE_GOVSSO_SESSION_ID;
+import static ee.ria.govsso.session.filter.RequestCorrelationFilter.MDC_ATTRIBUTE_GOVSSO_TRACE_ID;
 import static ee.ria.govsso.session.logging.StatisticsLogger.AUTHENTICATION_REQUEST_TYPE;
-import static ee.ria.govsso.session.logging.StatisticsLogger.AuthenticationRequestType.START_SESSION;
 import static ee.ria.govsso.session.logging.StatisticsLogger.AuthenticationRequestType.UPDATE_SESSION;
 import static ee.ria.govsso.session.logging.StatisticsLogger.LOGIN_REQUEST_INFO;
+import static ee.ria.govsso.session.session.SsoCookie.COOKIE_NAME_GOVSSO;
 
 @Slf4j
 @Validated
@@ -56,6 +62,7 @@ import static ee.ria.govsso.session.logging.StatisticsLogger.LOGIN_REQUEST_INFO;
 public class LoginInitController {
 
     public static final String LOGIN_INIT_REQUEST_MAPPING = "/login/init";
+    public static final String REQUEST_PARAM_LOGIN_CHALLENGE = "login_challenge";
 
     private final SsoCookieSigner ssoCookieSigner;
     private final HydraService hydraService;
@@ -66,12 +73,16 @@ public class LoginInitController {
 
     @GetMapping(value = LOGIN_INIT_REQUEST_MAPPING, produces = MediaType.TEXT_HTML_VALUE)
     public ModelAndView loginInit(
-            @RequestParam(name = "login_challenge")
+            @RequestParam(name = REQUEST_PARAM_LOGIN_CHALLENGE)
             @Pattern(regexp = "^[a-f0-9]{32}$", message = "Incorrect login_challenge format") String loginChallenge,
             @RequestParam(name = "lang", required = false) String language,
             @CookieValue(value = "__Host-LOCALE", required = false) String localeCookie,
             HttpServletRequest request,
             HttpServletResponse response) {
+
+        Cookie cookie = CookieUtil.getCookie(request, COOKIE_NAME_GOVSSO);
+        SsoCookie ssoCookie = ssoCookieSigner.getVerifiedSsoCookieOrNull(cookie);
+        setTraceContexts(loginChallenge, ssoCookie);
 
         LoginRequestInfo loginRequestInfo = hydraService.fetchLoginRequestInfo(loginChallenge);
         request.setAttribute(LOGIN_REQUEST_INFO, loginRequestInfo);
@@ -91,7 +102,7 @@ public class LoginInitController {
         Prompt prompt = PromptUtil.getAndValidatePromptFromRequestUrl(loginRequestInfo.getRequestUrl());
         if (prompt == Prompt.NONE) {
             request.setAttribute(AUTHENTICATION_REQUEST_TYPE, UPDATE_SESSION);
-            return updateSession(loginRequestInfo);
+            return updateSession(loginRequestInfo, ssoCookie, response);
         }
 
         validateLoginRequestInfoForAuthenticationAndContinuation(loginRequestInfo, prompt);
@@ -105,6 +116,19 @@ public class LoginInitController {
                 return sessionContinuationView(loginRequestInfo, idToken);
             }
         }
+    }
+
+    private void setTraceContexts(String loginChallenge, SsoCookie ssoCookie) {
+        if (ssoCookie != null) {
+            MDC.put(MDC_ATTRIBUTE_GOVSSO_SESSION_ID, ssoCookie.getSessionId());
+            ElasticApm.currentTransaction().setLabel(MDC_ATTRIBUTE_GOVSSO_SESSION_ID, ssoCookie.getSessionId());
+        } else {
+            String sessionId = DigestUtils.sha256Hex(loginChallenge);
+            MDC.put(MDC_ATTRIBUTE_GOVSSO_SESSION_ID, sessionId);
+            ElasticApm.currentTransaction().setLabel(MDC_ATTRIBUTE_GOVSSO_SESSION_ID, sessionId);
+        }
+        MDC.put(MDC_ATTRIBUTE_GOVSSO_TRACE_ID, loginChallenge);
+        ElasticApm.currentTransaction().setLabel(MDC_ATTRIBUTE_GOVSSO_TRACE_ID, loginChallenge);
     }
 
     private void validateLoginRequestInfo(LoginRequestInfo loginRequestInfo) {
@@ -135,7 +159,7 @@ public class LoginInitController {
         }
     }
 
-    private ModelAndView updateSession(LoginRequestInfo loginRequestInfo) {
+    private ModelAndView updateSession(LoginRequestInfo loginRequestInfo, SsoCookie ssoCookie, HttpServletResponse response) {
         validateLoginRequestInfoAgainstToken(loginRequestInfo);
         JWT idToken = hydraService.getTaraIdTokenFromConsentContext(loginRequestInfo.getSubject(), loginRequestInfo.getSessionId());
         if (idToken == null) {
@@ -143,9 +167,15 @@ public class LoginInitController {
         }
 
         validateIdToken(loginRequestInfo, idToken);
-        LoginAcceptResponse response = hydraService.acceptLogin(loginRequestInfo.getChallenge(), idToken);
+        LoginAcceptResponse loginAcceptResponse = hydraService.acceptLogin(loginRequestInfo.getChallenge(), idToken);
         statisticsLogger.logAccept(loginRequestInfo, idToken, UPDATE_SESSION);
-        return new ModelAndView("redirect:" + response.getRedirectTo());
+
+        if (ssoCookie == null) {
+            throw new SsoException(ErrorCode.USER_COOKIE_MISSING, "Missing or expired cookie");
+        }
+        SsoCookie updatedSsoCookie = ssoCookie.withLoginChallenge(loginRequestInfo.getChallenge());
+        response.addHeader(HttpHeaders.SET_COOKIE, ssoCookieSigner.getSignedCookieValue(updatedSsoCookie));
+        return new ModelAndView("redirect:" + loginAcceptResponse.getRedirectTo());
     }
 
     private void validateLoginRequestInfoAgainstToken(LoginRequestInfo loginRequestInfo) {
@@ -190,13 +220,17 @@ public class LoginInitController {
 
     private ModelAndView authenticateWithTara(LoginRequestInfo loginRequestInfo, HttpServletResponse response) {
         String acrValue = loginRequestInfo.getOidcContext().getAcrValues()[0];
-        AuthenticationRequest authenticationRequest = taraService.createAuthenticationRequest(acrValue, loginRequestInfo.getChallenge());
+        String loginChallenge = loginRequestInfo.getChallenge();
+        AuthenticationRequest authenticationRequest = taraService.createAuthenticationRequest(acrValue, loginChallenge);
 
+        String sessionId = DigestUtils.sha256Hex(loginChallenge);
         SsoCookie ssoCookie = SsoCookie.builder()
-                .loginChallenge(loginRequestInfo.getChallenge())
+                .sessionId(sessionId)
+                .loginChallenge(loginChallenge)
                 .taraAuthenticationRequestState(authenticationRequest.getState().getValue())
                 .taraAuthenticationRequestNonce(authenticationRequest.getNonce().getValue())
                 .build();
+
         response.addHeader(HttpHeaders.SET_COOKIE, ssoCookieSigner.getSignedCookieValue(ssoCookie));
         return new ModelAndView("redirect:" + authenticationRequest.toURI().toString());
     }

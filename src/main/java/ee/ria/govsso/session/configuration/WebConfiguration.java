@@ -1,10 +1,7 @@
 package ee.ria.govsso.session.configuration;
 
-import ee.ria.govsso.session.session.SsoCookieArgumentResolver;
-import ee.ria.govsso.session.session.SsoCookieSigner;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.config.ConfigurableBeanFactory;
 import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
 import org.springframework.context.MessageSource;
 import org.springframework.context.annotation.Bean;
@@ -12,14 +9,12 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.support.ResourceBundleMessageSource;
 import org.springframework.retry.annotation.EnableRetry;
 import org.springframework.scheduling.annotation.EnableScheduling;
-import org.springframework.web.method.support.HandlerMethodArgumentResolver;
 import org.springframework.web.servlet.LocaleResolver;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 import org.springframework.web.servlet.i18n.CookieLocaleResolver;
 import org.springframework.web.servlet.i18n.LocaleChangeInterceptor;
 
-import java.util.List;
 import java.util.Locale;
 
 import static ee.ria.govsso.session.util.LocaleUtil.DEFAULT_LOCALE;
@@ -31,13 +26,6 @@ import static ee.ria.govsso.session.util.LocaleUtil.DEFAULT_LOCALE;
 @Configuration
 @RequiredArgsConstructor
 public class WebConfiguration implements WebMvcConfigurer {
-    private final ConfigurableBeanFactory configurableBeanFactory;
-    private final SsoCookieSigner ssoCookieSigner;
-
-    @Override
-    public void addArgumentResolvers(List<HandlerMethodArgumentResolver> argumentResolvers) {
-        argumentResolvers.add(new SsoCookieArgumentResolver(configurableBeanFactory, ssoCookieSigner));
-    }
 
     @Bean
     public LocaleResolver localeResolver() {
